@@ -7,6 +7,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import csv
 from time import time, sleep
+from base64 import b64encode
+from requests import get
 
 # creating argument parser
 parser = argparse.ArgumentParser(description='It will scrap using folowing inputs')
@@ -27,7 +29,12 @@ class Scraper:
         self.search_term = search_term
         self.file_name = file_name
 
+    def get_as_base64(self, url):
+        # Get an image url and return base64 encoded
+        return b64encode(get(url).content)
+
     def persist_data(self, data):
+        # Get a list and write to csv file
         with open(f'{self.file_name}.csv', 'w', newline='', encoding='utf-8') as f:
             header = ['Name', 'Id', 'Description', 'Url', 'Img', 'Subscribers', 'links']
             writer = csv.writer(f)
@@ -35,14 +42,16 @@ class Scraper:
             writer.writerows(data)
 
     def get_channel_details(self, channelUrl):
+        # Get a youtube channel url and retrieve informations
+
         self.driver.get(channelUrl + "/about")
         css_selector_url = """#link-list-container.style-scope.ytd-channel-about-metadata-renderer
                             a.yt-simple-endpoint.style-scope.ytd-channel-about-metadata-renderer"""
+        css_selector_url_img = "banner-visible-area style-scope ytd-c4-tabbed-header-renderer"
 
         wait = WebDriverWait(self.driver, self.timeout)
         try:
             name = wait.until(EC.presence_of_element_located((By.ID, 'channel-name'))).text
-            img = 0
             #img = wait.until(EC.presence_of_element_located((By.XPATH, "//div[@id='inner-header-container']//yt-formatted-string[@class='style-scope ytd-channel-name']")))
             #img = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/ytd-app/div/ytd-page-manager/ytd-browse/div[3]/ytd-c4-tabbed-header-renderer")))
             #img = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "banner-visible-area style-scope ytd-c4-tabbed-header-renderer")))
@@ -63,7 +72,10 @@ class Scraper:
                 sleep(2)
             except TimeoutException:
                 links = []
-            img = wait.until(EC.presence_of_element_located((By.XPATH, "//img/@src")))
+            try:
+                img_url = wait.until(EC.presence_of_element_located((By.ID, 'img'))).get_attribute("src")
+            except:
+                img_url = ""
         except TimeoutException:
             print(f'Timeout. {self.timeout} second')
 
@@ -72,7 +84,7 @@ class Scraper:
             for channel_link in links:
                 channel_links.append(channel_link.get_attribute('href'))
 
-        channel_data = (name, channelId, description, channelUrl, img, subscriberCount, channel_links)
+        channel_data = [name, channelId, description, channelUrl, img_url, subscriberCount, channel_links]
 
         return channel_data
 
@@ -91,6 +103,7 @@ class Scraper:
         channels_Data = []
         for channelUrl in ChannelsUrl:
             channel_data = self.get_channel_details(channelUrl)
+            channel_data[4] = self.get_as_base64(channel_data[4])
             channels_Data.append(channel_data)
 
         self.driver.close()
